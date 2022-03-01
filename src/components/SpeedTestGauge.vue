@@ -1,30 +1,46 @@
 <template>
   <div class="container">
-    <div class="test">
-      <div
-        v-show="showButton"
-        class="start-btn start-btn-fill zoom-in"
-        :class="{ 'zoom-out disabled': animateButton }"
-        @click="startTests"
-      >
-        <p>START</p>
-      </div>
-      <div v-show="!showButton" class="test-area zoom-in">
-        <div class="test-name">{{ testName }}</div>
-        <canvas ref="speedGauge" width="700" height="350"></canvas>
-        <div class="meter-text">{{ speed.toFixed(2) }}</div>
-        <div class="unit">Mbps</div>
-      </div>
+    <div v-if="connectionStatus === 0">
+      <a-spin size="large" />
+      <p>Checking connection...</p>
     </div>
-    <a-table v-if="data.length !== 0" :columns="columns" :data-source="data">
-      <!-- <span slot="type" slot-scope="type">
-        <a-tag
-          :key="type"
-          :color="type === 'Download' ? 'purple' : 'green'"
-        ></a-tag>
-        {{ type }}
-      </span> -->
-    </a-table>
+    <div v-else-if="connectionStatus === 1">
+      <div class="test">
+        <div
+          v-show="showButton"
+          class="start-btn start-btn-fill zoom-in"
+          :class="{ 'zoom-out disabled': animateButton }"
+          @click="startTests"
+        >
+          <p>START</p>
+        </div>
+        <div v-if="!serverSelected && !showButton">
+          <a-spin size="large" />
+          <p>{{ spinnerName }}</p>
+        </div>
+        <div v-else-if="!showButton && serverSelected">
+          <div>
+            IP: {{ location.connection.ip }}
+            {{location.location.city}}
+          </div>
+          <a-select v-if="servers.length !== 0" :default-value="optimalServer.server" style="width: 240px" @change="handleServerChange">
+            <a-select-option v-for="server in filteredServersByCountry" :value="server.host" :key="server.id">
+              {{ server.city }} - {{ server.provider }}
+            </a-select-option>
+          </a-select>
+        </div>
+        <div v-show="showMeter && serverSelected" class="test-area zoom-in">
+          <div class="test-name">{{ testName }}</div>
+          <canvas ref="speedGauge" width="700" height="350"></canvas>
+          <div class="meter-text">{{ speed.toFixed(2) }}</div>
+          <div class="unit">Mbps</div>
+        </div>
+      </div>
+      <a-table v-if="data.length !== 0" :columns="columns" :data-source="data"></a-table>
+    </div>
+    <div v-else-if="connectionStatus === -1">
+      NO INTERNET CONNECTION!
+    </div>
   </div>
 </template>
 
@@ -57,74 +73,89 @@ const columns = [
   }
 ]
 export default {
-  data() {
+  data () {
     return {
       columns,
       ctx: null,
-      sizScale: 0,
       testName: 'Download',
+      spinnerName: '',
       backgroundColor: '#E0E0E0',
       foregroundColor: '#6060AA',
+      optimalServer: '',
+      location: {},
+      servers: [],
+      serverResponses: [],
       temp: [],
       data: [],
       showButton: true,
+      showMeter: false,
       animateButton: false,
+      serverSelected: false,
+      sizScale: 0,
+      connectionStatus: 0,
       speed: 0,
       maxSpeed: 0
     }
   },
   timers: {
     update: { time: 100, immediate: true, repeat: true },
-    resetMeter: { time: 10, immediate: true, repeat: true }
+    resetMeter: { time: 10, immediate: true, repeat: true },
+    poolServers: { time: 1000, immediate: true, repeat: true },
+    poolDownload: { time: 100, immediate: true, repeat: true },
+    poolUpload: { time: 100, immediate: true, repeat: true }
   },
   methods: {
-    startTests() {
-      this.testName = 'Download'
-      this.foregroundColor = '#6060AA'
+    startTests () {
+      this.getLocation()
+      this.getServers()
+      this.waitFor((_) => Object.keys(this.location).length !== 0 && this.servers.length !== 0)
+        .then((_) => {
+          this.findServers(this.filteredServersByCountry)
+          this.waitFor((_) => this.optimalServer !== '')
+            .then((_) => {
+              this.downloadTest(this.optimalServer.server)
+              this.$timer.start('update')
+              setTimeout(() => {
+                this.$timer.stop('poolDownload')
+                this.addToTable('Download')
+                this.uploadTest(this.optimalServer.server)
+                this.foregroundColor = '#32a852'
+                this.testName = 'Upload'
+                setTimeout(() => {
+                  this.$timer.stop('poolUpload')
+                  this.$timer.stop('update')
+                  this.addToTable('Upload')
+                  this.speed = 0
+                  this.maxSpeed = 0
+                  this.drawMeter(this.$refs.speedGauge, this.normalizedSpeed, 0)
+                }, 6000)
+              }, 6000)
+            })
+        })
       this.animateButton = true
       setTimeout(() => {
         this.showButton = false
         this.animateButton = false
-        setTimeout(() => this.$timer.start('update'), 750)
+        this.showMeter = true
       }, 500)
-      setTimeout(() => {
-        this.$timer.stop('update')
-        this.$timer.start('resetMeter')
-        this.addToTable('Download')
-        this.waitFor((_) => !this.timers.resetMeter.isRunning).then((_) =>
-          setTimeout(() => {
-            this.foregroundColor = '#1AAA00'
-            this.testName = 'Upload'
-            this.$timer.start('update')
-            setTimeout(() => {
-              this.$timer.stop('update')
-              this.$timer.start('resetMeter')
-              this.addToTable('Upload')
-              this.waitFor((_) => !this.timers.resetMeter.isRunning).then(
-                (_) => (this.showButton = true)
-              )
-            }, 5000)
-          }, 750)
-        )
-      }, 5000)
     },
-    update() {
-      this.speed =
-        Math.floor(Math.random() * (500 * 100 - 1 * 100) + 1 * 100) / (1 * 100)
+    update () {
+      // this.speed =
+      //   Math.floor(Math.random() * (500 * 100 - 1 * 100) + 1 * 100) / (1 * 100)
       if (this.speed > this.maxSpeed) this.maxSpeed = this.speed
-      this.drawMeter(this.$refs.speedGauge, this.normalize, 0)
+      this.drawMeter(this.$refs.speedGauge, this.normalizedSpeed, 0)
       this.temp.push(this.speed)
     },
-    resetMeter() {
+    resetMeter () {
       if (this.speed - 1 >= 0) this.speed--
       else {
         this.speed = 0
         this.maxSpeed = 0
         this.$timer.stop('resetMeter')
       }
-      this.drawMeter(this.$refs.speedGauge, this.normalize, 0)
+      this.drawMeter(this.$refs.speedGauge, this.normalizedSpeed, 0)
     },
-    addToTable(type) {
+    addToTable (type) {
       this.data.push({
         key: this.data.length + 1,
         type,
@@ -137,7 +168,7 @@ export default {
       })
       this.temp = []
     },
-    initMeter(meterCanvas) {
+    initMeter (meterCanvas) {
       this.ctx = meterCanvas.getContext('2d')
       // var dp = window.devicePixelRatio || 1
       var cw = meterCanvas.width // meterCanvas.clientWidth * dp
@@ -145,14 +176,13 @@ export default {
       this.sizScale = ch * 0.0055
       if (meterCanvas.width === cw && meterCanvas.height === ch) {
         this.ctx.clearRect(0, 0, cw, ch)
+      } else {
+        meterCanvas.width = cw
+        meterCanvas.height = ch
       }
-      // else {
-      //   meterCanvas.width = cw
-      //   meterCanvas.height = ch
-      // }
       this.drawMeterBase(meterCanvas)
     },
-    drawMeterBase(meterCanvas) {
+    drawMeterBase (meterCanvas) {
       this.ctx.beginPath()
       this.ctx.strokeStyle = this.backgroundColor
       this.ctx.lineWidth = 16 * this.sizScale
@@ -165,7 +195,7 @@ export default {
       )
       this.ctx.stroke()
     },
-    drawMeter(meterCanvas, amount, progress, prog) {
+    drawMeter (meterCanvas, amount, progress, prog) {
       this.drawMeterBase(meterCanvas)
       this.ctx.beginPath()
       this.ctx.strokeStyle = this.backgroundColor
@@ -199,22 +229,118 @@ export default {
         )
       }
     },
-    waitFor(conditionFunction) {
+    waitFor (conditionFunction) {
       const poll = (resolve) => {
         if (conditionFunction()) resolve()
         else setTimeout((_) => poll(resolve), 400)
       }
-
       return new Promise(poll)
+    },
+    checkConnection () {
+      this.ping('www.google.com', '-c 1 -W 1')
+        .then((response) => {
+          response.code === 0 ? this.connectionStatus = 1 : this.connectionStatus = -1
+        })
+    },
+    handleServerChange (value) {
+      console.log(value)
+      this.optimalServer.server = value
+    },
+    ping (server, params = '-c 1 -W 1') {
+      return this.$rpc.call('diagnose', 'ping', { args: `${params} ${server.split(':')[0]}` })
+    },
+    getIp () {
+      this.$rpc.call('speedtestapi', 'get_ip', { })
+        .then((response) => console.log(JSON.parse(response)))
+    },
+    getLocation () {
+      this.spinnerName = 'Getting current location...'
+      this.$rpc.call('speedtestapi', 'get_location', { })
+        .then((response) => {
+          console.log(response)
+          this.location = JSON.parse(response.data)
+        })
+    },
+    getServers () {
+      this.spinnerName = 'Acquiring server list...'
+      this.$rpc.call('speedtestapi', 'get_servers', { })
+        .then((response) => {
+          this.servers = JSON.parse(response.data)
+        })
+    },
+    findServers (servers) {
+      this.spinnerName = 'Selecting optimal server...'
+      this.$rpc.call('speedtestapi', 'find_servers', { servers })
+        .then(response => {
+          console.log(response)
+          this.$timer.start('poolServers')
+        })
+    },
+    downloadTest (server) {
+      this.$rpc.call('speedtestapi', 'test_download', { server })
+        .then(response => {
+          console.log(response)
+          this.$timer.start('poolDownload')
+        })
+    },
+    uploadTest (server) {
+      this.$rpc.call('speedtestapi', 'test_upload', { server })
+        .then(response => {
+          console.log(response)
+          this.$timer.start('poolUpload')
+        })
+    },
+    poolServers () {
+      this.$rpc.call('speedtestapi', 'pool_servers', { })
+        .then(response => {
+          if (response.data != null) {
+            const data = JSON.parse(response.data)
+            console.log(data)
+            this.optimalServer = data[0]
+            this.$timer.stop('poolServers')
+            this.serverSelected = true
+          } else {
+            console.log(response)
+          }
+        })
+    },
+    poolDownload () {
+      this.$rpc.call('speedtestapi', 'pool_download', { })
+        .then(response => {
+          if (response.data != null) {
+            console.log(response.data)
+            this.speed = parseFloat(response.data.split(',')[1])
+          } else {
+            console.log(response)
+          }
+        })
+    },
+    poolUpload () {
+      this.$rpc.call('speedtestapi', 'pool_upload', { })
+        .then(response => {
+          if (response.data != null) {
+            console.log(response.data)
+            this.speed = parseFloat(response.data.split(',')[1])
+          } else {
+            console.log(response)
+          }
+        })
     }
   },
   computed: {
-    normalize() {
+    normalizedSpeed () {
       return this.speed / this.maxSpeed
+    },
+    filteredServersByCountry () {
+      return this.servers.filter((server) => server.country === this.location.location.country.name)
     }
   },
-  mounted() {
-    this.initMeter(this.$refs.speedGauge)
+  created () {
+    this.checkConnection()
+  },
+  mounted () {
+    this.waitFor((_) => this.connectionStatus === 1 && Object.keys(this.location).length !== 0 && this.filteredServersByCountry.length !== 0)
+      .then((_) => this.initMeter(this.$refs.speedGauge))
   }
 }
 </script>
@@ -344,3 +470,4 @@ table tr:nth-child(2n) td {
   }
 }
 </style>
+

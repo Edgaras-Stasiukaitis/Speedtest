@@ -7,8 +7,11 @@ local parser = argparse("speedtest", "Finds optimal server, measures download an
 local find_servers = parser:command("find_servers", "By default selects optimal server from /tmp/filtered_servers file if the file exists")
 find_servers:option("-s --server", "Measures specified server\'s latency")
 find_servers:option("-d --dump", "Writes data as JSON format", "/tmp/optimal_server")
-find_servers:option("-c --count", "Gets first N optimal servers", "1")
+find_servers:option("-c --count", "Gets first N optimal servers")
 find_servers:flag("-q --quiet", "Hides all of the output")
+
+local find_optimal = parser:command("find_optimal", "Selects optimal server from server list")
+find_optimal:flag("-q --quiet", "Hides all of the output")
 
 local measure_download = parser:command("measure_download", "Measures download speed")
 measure_download:option("-s --server", "Downloads file from specified server")
@@ -19,6 +22,11 @@ measure_upload:option("-s --server", "Uploads file to specified server")
 measure_upload:flag("-q --quiet", "Hides all of the output")
 
 local args = parser:parse()
+
+local TOTAL_TEST_TIME = 10
+local MAX_RETRIES = 20
+local SIZE = 1000
+local AGENT = "libcurl-speedchecker/1.0"
 
 function Dump(o)
     if type(o) == 'table' then
@@ -107,40 +115,56 @@ function Write_as_json(filename, params)
     io.close(file)
 end
 
+function Measure_latency(f, server)
+    local c = cURL.easy{
+        url = server .. "/download?size=10000",
+        port = 8080,
+        useragent = AGENT,
+        writefunction = f,
+        timeout = 1
+    }
+    c:perform()
+    local code = c:getinfo_response_code()
+    local total_time = c:getinfo_total_time()
+    c:close()
+    return server, code, total_time
+end
+
 function Find_servers()
-    if tonumber(args.count) < 1 then return end
+    if args.count ~= nil and tonumber(args.count) < 1 then
+        print("Provided count can not be less than 1")
+        return
+    end
     local f = io.open("/dev/null", "w")
     if args.server ~= nil then
+        local results = io.open("/tmp/results", "a")
+        local status, _, code, total_time = pcall(Measure_latency, f, args.server)
         if not args.quiet then
-            print(string.format("%-35s %-15s %-8s", "Server", "Response_code", "Total_time"))
+            print(string.format("%-35s %-15s %-8s", "Server", "Response_code", "Total_time")) 
         end
-        if not pcall(function ()
-            local c = cURL.easy{
-                url = Split(args.server, ":")[1],
-                writefunction = f,
-                timeout = 1
-            }
-            c:perform()
-            local code = c:getinfo_response_code()
+        if status then
+            results:write(args.server .. "," .. code .. "," .. total_time .. "\n")
             if not args.quiet then
-                print(string.format("%-35s %-15s %-8s", args.server, code, c:getinfo_total_time()))
+                print(string.format("%-35s %-15s %-8s", args.server, code, total_time))
             end
-            c:close()
-        end) then
+        else
+            results:write(args.server .. "," .. 500 .. "," .. -1 .. "\n")
             if not args.quiet then
                 print(string.format("%-35s %-15s %-8s", args.server, 500, -1))
             end
         end
+        io.close(results)
         return
     end
-    local filtered_servers_file = io.open("/tmp/filtered_servers", "r")
+    local filename = "/tmp/filtered_servers"
+    local filtered_servers_file = io.open(filename, "r")
     if filtered_servers_file == nil then
-        print("File is missing!")
+        print("File " .. filename .. " is missing!")
         return
     end
     local size = filtered_servers_file:seek("end")
     if size == 0 then
-        print("File does not contain any records!")
+        print("File " .. filename .. " does not contain any records!")
         io.close(filtered_servers_file)
         return
     end
@@ -149,33 +173,49 @@ function Find_servers()
     end
     local servers = {}
     for server in io.lines("/tmp/filtered_servers") do
-        if not pcall(function ()
-            local c = cURL.easy{
-                url = Split(server, ":")[1],
-                writefunction = f,
-                timeout = 1
-            }
-            local ok = c:perform()
-            local code = c:getinfo_response_code()
-            local total_time = c:getinfo_total_time()
-            if not args.quiet then
+        local status, _, code, total_time = pcall(Measure_latency, f, server)
+        if not args.quiet then
+            if status then
                 print(string.format("%-35s %-15s %-8s", server, code, total_time))
-            end
-            if ok and code == 200 then
-                table.insert(servers, {server = server, total_time = total_time, code = code})
-            end
-            c:close()
-        end) then
-            if not args.quiet then
+            else
                 print(string.format("%-35s %-15s %-8s", server, 500, -1))
             end
+        end
+        if code == 200 then
+            table.insert(servers, {server = server, total_time = total_time, code = code})
         end
     end
     io.close(f)
     table.sort(servers, function (time1, time2) return time1.total_time < time2.total_time end )
-    if args.dump ~= nil then
+    if args.count ~= nil then
         Write_as_json(args.dump, Get_first_n_values(servers, tonumber(args.count)))
+        return
     end
+    Write_as_json(args.dump, servers)
+end
+
+function Find_optimal()
+    local filename = "/tmp/results"
+    local file = io.open(filename, "r")
+    if file ~= nil then
+        io.close(file)
+    else
+        print(filename .. " not found")
+        return
+    end
+    local servers = {}
+    local count = 0
+    for line in io.lines(filename) do
+        count = count + 1
+        if count > 1 then
+            local data = Split(line, ",")
+            if data[2] == "200" then
+                table.insert(servers, {server = data[1], code = data[2], total_time = data[3]})
+            end
+        end
+    end
+    table.sort(servers, function (server1, server2) return server1.total_time < server2.total_time end )
+    Write_as_json("/tmp/optimal", servers)
 end
 
 function Measure_download()
@@ -183,31 +223,61 @@ function Measure_download()
         print("Please provide a server for download speed test using -s <server> option")
         return
     end
-    local null_file = io.open("/dev/null", "w")
     local download_file = io.open("/tmp/download_results", "w")
+    local null_file = io.open("/dev/null", "w")
+    local url = args.server .. "/download?size=" .. SIZE * 1000000
     local c = cURL.easy{
-        url = args.server,
+        url = url,
+        port = 8080,
+        useragent = AGENT,
+        ssl_verifypeer = false,
+        ssl_verifyhost = false,
         writefunction = null_file
     }
     if not args.quiet then
         print(string.format("\r%-35s %-10s %-12s %-12s %-10s", "Server", "Total(MB)", "Now(MB)", "Percent(%)", "Speed, Mbps"))
     end
     local start_time = socket.gettime()
-    local downloaded_size_mb, end_time, download_speed, total_size_mb, percent_downloaded = 0, 0, 0, 0, 0
+    local downloaded_size_mb, end_time, total_time, download_speed, total_size_mb, percent_downloaded, prev_size, same_value_count = 0, 0, 0, 0, 0, 0, 0, 0
     c:setopt_progressfunction(function(dltotal, dlnow)
-        downloaded_size_mb = dlnow / 1000000
+        if same_value_count > MAX_RETRIES then
+            print('\ntest unsuccessful!')
+            download_file:write("error\n")
+            c:close()
+            return
+        end
         end_time = socket.gettime()
-        download_speed = downloaded_size_mb * 8 / (end_time - start_time)
-        download_file:write(args.server .. "," .. download_speed .. "\n")
+        downloaded_size_mb = dlnow / 1000000
+        if downloaded_size_mb == prev_size then
+            same_value_count = same_value_count + 1
+        else same_value_count = 0
+        end
+        total_time = end_time - start_time
+        if total_time >= TOTAL_TEST_TIME then
+            print('\ntest finished!')
+            download_file:write("done\n")
+            c:close()
+            return
+        end
+        download_speed = downloaded_size_mb * 8 / total_time
+        download_file:write(download_speed .. "\n")
         if not args.quiet then
             total_size_mb = dltotal / 1000000
             percent_downloaded = math.floor((dlnow / dltotal * 100) * 100) / 100
             io.write(string.format("\r%-35s %-10s %-12s %-12s %-10s", args.server, total_size_mb, downloaded_size_mb, percent_downloaded, download_speed))
         end
+        prev_size = downloaded_size_mb
     end)
     c:setopt(cURL.OPT_NOPROGRESS, false)
-    assert(c:perform())
-    io.write("\n")
+    local status, error = pcall(function() c:perform() end)
+    if error == "[CURL-EASY][PARTIAL_FILE] Error (18)" then
+        print('\ntest finished!')
+        download_file:write("done\n")
+    end
+    if status then
+        print('\ntest finished!')
+        download_file:write("done\n")
+    end
     io.close(null_file)
     io.close(download_file)
 end
@@ -219,16 +289,18 @@ function Measure_upload()
     end
     local null_file = io.open("/dev/null", "w")
     local upload_file = io.open("/tmp/upload_results", "w")
-    local url = Split(args.server, ":")[1] .. "/speedtest/upload.php"
+    local url = args.server .. "/upload"
     local c = cURL.easy{
         url = url,
+        port = 8080,
+        useragent = AGENT,
         writefunction = null_file,
         post = true,
         httppost = cURL.form{
-            file1 = {
-              file = "/tmp/random.dat",
-              type = "text/plain",
-              name = "upload.lua",
+            file0 = {
+                file = "/dev/zero",
+                type = "text/plain",
+                name = "upload.lua",
             }
         }
     }
@@ -236,24 +308,47 @@ function Measure_upload()
         print(string.format("\r%-35s %-10s %-12s %-12s %-10s", "Server", "Total(MB)", "Now(MB)", "Percent(%)", "Speed, Mbps"))
     end
     local start_time = socket.gettime()
-    local uploaded_size_mb, end_time, upload_speed, total_size_mb, percent_uploaded = 0, 0, 0, 0, 0
+    local uploaded_size_mb, end_time, total_time, upload_speed, total_size_mb, percent_uploaded, prev_size, same_value_count = 0, 0, 0, 0, 0, 0, 0, 0
     c:setopt_progressfunction(function(_, _, ultotal, ulnow)
+        if same_value_count > MAX_RETRIES then
+            print('\ntest unsuccessful!')
+            upload_file:write("error\n")
+            c:close()
+            return
+        end
         uploaded_size_mb = ulnow / 1000000
+        if uploaded_size_mb == prev_size then
+            same_value_count = same_value_count + 1
+        else same_value_count = 0
+        end
         end_time = socket.gettime()
-        upload_speed = uploaded_size_mb * 8 / (end_time - start_time)
-        upload_file:write(args.server .. "," .. upload_speed .. "\n")
+        total_time = end_time - start_time
+        if total_time >= TOTAL_TEST_TIME then
+            print('\ntest finished!')
+            upload_file:write("done\n")
+            c:close()
+            return
+        end
+        upload_speed = uploaded_size_mb * 8 / total_time
+        upload_file:write(upload_speed .. "\n")
         if not args.quiet then
             total_size_mb = ultotal / 1000000
             percent_uploaded = math.floor((ulnow / ultotal * 100) * 100) / 100
             io.write(string.format("\r%-35s %-10s %-12s %-12s %-10s", args.server, total_size_mb, uploaded_size_mb, percent_uploaded, upload_speed))
         end
+        prev_size = uploaded_size_mb
     end)
     c:setopt(cURL.OPT_NOPROGRESS, false)
-    assert(c:perform())
+    local status = pcall(function() c:perform() end)
+    if status then
+        print('\ntest finished!')
+        upload_file:write("done\n")
+    end
     io.close(null_file)
     io.close(upload_file)
 end
 
 if args.find_servers then Find_servers() end
+if args.find_optimal then Find_optimal() end
 if args.measure_download then Measure_download() end
 if args.measure_upload then Measure_upload() end

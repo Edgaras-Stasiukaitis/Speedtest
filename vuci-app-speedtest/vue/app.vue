@@ -1,92 +1,85 @@
 <template>
   <div class="container">
-    <div v-if="connectionStatus === 0">
-      <a-spin size="large" />
-      <p>Checking connection...</p>
-    </div>
-    <div v-else-if="connectionStatus === 1">
-      <share-results-modal :value="value" @valueChange="handleValueChange"/>
-      <div class="test">
-        <div class="test-area zoom-in">
-          <div class="stats-container">
-            <a-row type="flex" justify="center">
-              <a-col :span="4">
-                <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" fill="#1890ff" class="bi bi-arrow-down-circle" viewBox="0 0 16 16">
-                  <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V4.5z"/>
-                </svg>
-                <div class="stats">
-                  <div class="stats-text-header">Download, Mbps</div>
-                  <div class="stats-text-stat">{{ downloadSpeed.toFixed(2) }}</div>
-                </div>
-              </a-col>
-              <a-col :span="4">
-                <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" fill="currentColor" class="bi bi-geo-alt" viewBox="0 0 16 16">
-                  <path d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A31.493 31.493 0 0 1 8 14.58a31.481 31.481 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94zM8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10z"/>
-                  <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-                </svg>
-                <div class="stats">
-                  <div class="stats-text-header">IP, Location</div>
-                  <div v-if="Object.keys(location).length !== 0" class="stats-text-location"><b>
-                    {{ location.connection.ip }} {{location.location.city}}
-                  </b></div>
-                  <div v-else>-</div>
-                </div>
-              </a-col>
-              <a-col :span="4">
-                <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" fill="#1890ff" class="bi bi-arrow-up-circle" viewBox="0 0 16 16">
-                  <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707V11.5z"/>
-                </svg>
-                <div class="stats">
-                  <div class="stats-text-header">Upload, Mbps</div>
-                  <div class="stats-text-stat">{{ uploadSpeed.toFixed(2) }}</div>
-                </div>
-              </a-col>
-            </a-row>
-          </div>
-          <div v-if="showStatus" class="status">
-            <p>{{ spinnerName }}</p>
-          </div>
-          <canvas ref="speedGauge" width="1200" height="600"></canvas>
-          <div v-if="timers.poolDownload.isRunning" class="action-status blinking">
-            <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" fill="#6060AA" class="bi bi-arrow-down-circle" viewBox="0 0 16 16">
-              <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V4.5z"/>
-            </svg>
-          </div>
-          <div v-else-if="timers.poolUpload.isRunning" class="action-status blinking">
-            <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" fill="#32a852" class="bi bi-arrow-up-circle" viewBox="0 0 16 16">
-              <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707V11.5z"/>
-            </svg>
-          </div>
-          <div class="meter-text">{{ speed.toFixed(2) }}</div>
-          <div class="unit">Mbps</div>
-          <div class="server-text">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-server" viewBox="0 0 16 16">
-              <path d="M1.333 2.667C1.333 1.194 4.318 0 8 0s6.667 1.194 6.667 2.667V4c0 1.473-2.985 2.667-6.667 2.667S1.333 5.473 1.333 4V2.667z"/>
-              <path d="M1.333 6.334v3C1.333 10.805 4.318 12 8 12s6.667-1.194 6.667-2.667V6.334a6.51 6.51 0 0 1-1.458.79C11.81 7.684 9.967 8 8 8c-1.966 0-3.809-.317-5.208-.876a6.508 6.508 0 0 1-1.458-.79z"/>
-              <path d="M14.667 11.668a6.51 6.51 0 0 1-1.458.789c-1.4.56-3.242.876-5.21.876-1.966 0-3.809-.316-5.208-.876a6.51 6.51 0 0 1-1.458-.79v1.666C1.333 14.806 4.318 16 8 16s6.667-1.194 6.667-2.667v-1.665z"/>
-            </svg> Server
-            <div v-if="selectedServer !== ''">
-              <b>{{ selectedServer.split(':')[0] }}</b>
-            </div>
-            <div v-else>-</div>
-          </div>
+    <share-results-modal :value="value" @valueChange="handleValueChange"/>
+    <div class="test">
+      <div class="test-area">
+        <div class="stats-container">
+          <a-row type="flex" justify="center">
+            <a-col :span="4">
+              <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" fill="#1890ff" class="bi bi-arrow-down-circle" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V4.5z"/>
+              </svg>
+              <div class="stats">
+                <div class="stats-text-header">Download, Mbps</div>
+                <div class="stats-text-stat">{{ downloadSpeed.toFixed(2) }}</div>
+              </div>
+            </a-col>
+            <a-col :span="4">
+              <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" fill="currentColor" class="bi bi-geo-alt" viewBox="0 0 16 16">
+                <path d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A31.493 31.493 0 0 1 8 14.58a31.481 31.481 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94zM8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10z"/>
+                <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+              </svg>
+              <div class="stats">
+                <div class="stats-text-header">IP, Location</div>
+                <div v-if="connectionStatus === -1" >
+                  <a-tag color="red">No internet!</a-tag></div>
+                <div v-else-if="Object.keys(location).length !== 0" class="stats-text-location"><b>
+                  {{ location.connection.ip }} {{location.location.city}}
+                </b></div>
+                <div v-else>-</div>
+              </div>
+            </a-col>
+            <a-col :span="4">
+              <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" fill="#1890ff" class="bi bi-arrow-up-circle" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707V11.5z"/>
+              </svg>
+              <div class="stats">
+                <div class="stats-text-header">Upload, Mbps</div>
+                <div class="stats-text-stat">{{ uploadSpeed.toFixed(2) }}</div>
+              </div>
+            </a-col>
+          </a-row>
         </div>
-        <a-space size="large">
-          <a-button :type="showStatus ? 'danger' : 'primary'" size="large" @click="startTests">{{ showStatus ? 'STOP' : "START" }}</a-button>
-          <server-list-modal
-            :servers="filtered_servers"
-            :showStatus="showStatus"
-            @search="getSearch"
-            @getServers="getInitialData"
-            @serverSelected="handleServerChange"
-            @getOptimal="getOptimalModal"
-          />
-          <stats-modal/>
-        </a-space>
+        <div v-if="showStatus" class="status">
+          <p>{{ spinnerName }}</p>
+        </div>
+        <canvas ref="speedGauge" width="1200" height="600"></canvas>
+        <div v-if="timers.getDownloadResults.isRunning" class="action-status blinking">
+          <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" fill="#6060AA" class="bi bi-arrow-down-circle" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V4.5z"/>
+          </svg>
+        </div>
+        <div v-else-if="timers.getUploadResults.isRunning" class="action-status blinking">
+          <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" fill="#32a852" class="bi bi-arrow-up-circle" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707V11.5z"/>
+          </svg>
+        </div>
+        <div class="meter-text">{{ displayedSpeed.toFixed(2) }}</div>
+        <div class="unit">Mbps</div>
+        <div class="server-text">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-server" viewBox="0 0 16 16">
+            <path d="M1.333 2.667C1.333 1.194 4.318 0 8 0s6.667 1.194 6.667 2.667V4c0 1.473-2.985 2.667-6.667 2.667S1.333 5.473 1.333 4V2.667z"/>
+            <path d="M1.333 6.334v3C1.333 10.805 4.318 12 8 12s6.667-1.194 6.667-2.667V6.334a6.51 6.51 0 0 1-1.458.79C11.81 7.684 9.967 8 8 8c-1.966 0-3.809-.317-5.208-.876a6.508 6.508 0 0 1-1.458-.79z"/>
+            <path d="M14.667 11.668a6.51 6.51 0 0 1-1.458.789c-1.4.56-3.242.876-5.21.876-1.966 0-3.809-.316-5.208-.876a6.51 6.51 0 0 1-1.458-.79v1.666C1.333 14.806 4.318 16 8 16s6.667-1.194 6.667-2.667v-1.665z"/>
+          </svg> Server
+          <div v-if="selectedServer !== ''">
+            <b>{{ selectedServer.split(':')[0] }}</b>
+          </div>
+          <div v-else>-</div>
+        </div>
       </div>
-    </div>
-    <div v-else-if="connectionStatus === -1">
-      NO INTERNET CONNECTION!
+      <a-space size="large">
+        <a-button :type="showStatus ? 'danger' : 'primary'" size="large" @click="startTests">{{ showStatus ? 'STOP' : "START" }}</a-button>
+        <server-list-modal
+          :servers="filtered_servers"
+          :showStatus="showStatus"
+          @search="getSearch"
+          @getServers="getInitialData"
+          @serverSelected="handleServerChange"
+          @getOptimal="getOptimalModal"
+        />
+        <stats-modal/>
+      </a-space>
     </div>
   </div>
 </template>
@@ -113,7 +106,10 @@ export default {
       optimalServer: '',
       selectedServer: '',
       value: '',
+      prevValue: '',
+      ip: {},
       location: {},
+      sameValueCounts: {},
       systemInfo: [],
       servers: [],
       filtered_servers: [],
@@ -126,39 +122,43 @@ export default {
       uploadFinished: false,
       connectionStatus: 0,
       speed: 0,
+      displayedSpeed: 0,
       maxSpeed: 100,
       downloadSpeed: 0,
       uploadSpeed: 0
     }
   },
   timers: {
-    update: { time: 100, immediate: true, repeat: true },
+    smoothTransition: { time: 10, immediate: true, repeat: true },
     resetMeter: { time: 10, immediate: true, repeat: true },
-    poolServers: { time: 1000, immediate: true, repeat: true },
-    poolOptimal: { time: 1000, immediate: true, repeat: true },
-    poolDownload: { time: 100, immediate: true, repeat: true },
-    poolUpload: { time: 100, immediate: true, repeat: true }
+    findOptimalServers: { time: 1000, immediate: true, repeat: true },
+    getOptimalServer: { time: 1000, immediate: true, repeat: true },
+    getDownloadResults: { time: 50, immediate: true, repeat: true },
+    getUploadResults: { time: 50, immediate: true, repeat: true }
   },
   methods: {
+    stopTests () {
+      for (var i = 0; i < this.timeouts.length; i++) {
+        clearTimeout(this.timeouts[i])
+      }
+      this.$timer.stop('resetMeter')
+      this.$timer.stop('findOptimalServers')
+      this.$timer.stop('getOptimalServer')
+      this.$timer.stop('getDownloadResults')
+      this.$timer.stop('getUploadResults')
+      this.$timer.stop('smoothTransition')
+      this.showStatus = false
+      this.sameValueCounts = {}
+      this.killProcesses()
+      this.$timer.start('resetMeter')
+    },
     startTests () {
-      console.log(this.systemInfo)
       this.downloadFinished = false
       this.uploadFinished = false
       this.$timer.stop('resetMeter')
       this.spinnerName = ''
       if (this.showStatus) {
-        for (var i = 0; i < this.timeouts.length; i++) {
-          clearTimeout(this.timeouts[i])
-        }
-        this.$timer.stop('update')
-        this.$timer.stop('resetMeter')
-        this.$timer.stop('poolServers')
-        this.$timer.stop('poolOptimal')
-        this.$timer.stop('poolDownload')
-        this.$timer.stop('poolUpload')
-        this.showStatus = false
-        this.killProcesses()
-        this.$timer.start('resetMeter')
+        this.stopTests()
         return
       }
       this.showStatus = true
@@ -186,10 +186,10 @@ export default {
     downloadAndUploadSequence () {
       this.foregroundColor = '#6060AA'
       this.downloadTest(this.selectedServer)
-      console.log(this.downloadFinished)
       this.waitFor(() => this.downloadFinished).then(() => {
+        this.sameValueCounts = {}
         this.downloadFinished = false
-        this.$timer.stop('update')
+        this.$timer.stop('smoothTransition')
         this.downloadSpeed = this.speed
         const resetDownload = setTimeout(() => {
           this.$timer.start('resetMeter')
@@ -197,16 +197,17 @@ export default {
             this.uploadTest(this.selectedServer)
             this.foregroundColor = '#32a852'
             this.waitFor(() => this.uploadFinished).then(() => {
+              this.sameValueCounts = {}
               this.uploadFinished = false
-              this.$timer.stop('update')
+              this.$timer.stop('smoothTransition')
               this.uploadSpeed = this.speed
               const resetUpload = setTimeout(() => {
                 this.$timer.start('resetMeter')
                 this.waitFor(() => !this.timers.resetMeter.isRunning).then(() => {
                   this.showStatus = false
-                  this.$message.success('Tests finished!')
-                  // if (this.value !== '1') return
-                  // this.postResults(url)
+                  this.$message.success('Tests finished!', 5)
+                  if (this.value !== '1') return
+                  this.postResults('https://networktrafficapi.azurewebsites.net/api/Products')
                 })
               }, 1000)
               this.timeouts.push(resetUpload)
@@ -227,31 +228,37 @@ export default {
         })
     },
     getSearch (value) {
-      if (value == null || value == '') return
-      value = value.toLowerCase()
-      this.filtered_servers = this.servers
-        .filter((server) =>
-          server.country.toLowerCase().includes(value) ||
-          server.city.toLowerCase().includes(value) ||
-          server.host.toLowerCase().includes(value)
-        )
+      if (value != null || value !== '') {
+        value = value.toLowerCase()
+        this.filtered_servers = this.servers
+          .filter((server) =>
+            server.country.toLowerCase().includes(value) ||
+            server.city.toLowerCase().includes(value) ||
+            server.host.toLowerCase().includes(value)
+          )
+      }
     },
     getOptimalModal () {
       this.modalOptimal = true
       this.findServers(this.filteredServersByCountry)
     },
     handleServerChange (value) {
-      this.checkConnection(`${value.host.split(':')[0]}/speedtest/random500x500.jpg`, true)
+      this.checkConnection(`${value.host}/download?size=1000`, true)
       this.selectedServer = value.host
     },
-    update () {
+    smoothTransition () {
+      const increment = this.speed > 0 ? Math.log10(this.speed) : 0
+      if (this.displayedSpeed + 5 > this.speed && this.displayedSpeed - 5 < this.speed) this.displayedSpeed = this.speed
+      else if (this.displayedSpeed > this.speed) this.displayedSpeed -= increment
+      else if (this.displayedSpeed < this.speed) this.displayedSpeed += increment
       this.drawMeter(this.$refs.speedGauge, this.normalizedSpeed, 0)
     },
     resetMeter () {
-      const decreaser = this.speed > 0 ? Math.log10(this.speed) : 0
-      if (this.speed - decreaser > 1.5) this.speed = this.speed - decreaser
+      const decreaser = this.displayedSpeed > 0 ? Math.log10(this.displayedSpeed) : 0
+      if (this.displayedSpeed - decreaser > 1.5) this.displayedSpeed = this.displayedSpeed - decreaser
       else {
         this.speed = 0
+        this.displayedSpeed = 0
         this.$timer.stop('resetMeter')
       }
       this.drawMeter(this.$refs.speedGauge, this.normalizedSpeed, 0)
@@ -345,26 +352,28 @@ export default {
       this.checkingConnection = true
       this.$rpc.call('speedtestapi', 'check_connection', { server })
         .then((response) => {
-          // console.log(response)
           if (checkServer) {
-            // if (response.ok) return
-            // this.selectedServer = this.servers[0].host
-            // this.$message.error('Selected server is currently unavailable (defaulted to first server of the list)')
+            if (response.ok) return
+            this.selectedServer = this.servers[0].host
+            this.$message.error('Selected server is currently unavailable (defaulted to first server of the list)')
             return
           }
           response.ok ? this.connectionStatus = 1 : this.connectionStatus = -1
+          if (this.connectionStatus === -1) {
+            this.stopTests()
+            this.$message.error('Could not establish connection due to unavailable internet service', 5)
+          }
           this.checkingConnection = false
         })
     },
     getIp () {
       this.$rpc.call('speedtestapi', 'get_ip', { })
-        .then((response) => console.log(JSON.parse(response)))
+        .then((response) => (this.ip = JSON.parse(response)))
     },
     getLocation () {
       this.spinnerName = 'Getting current location...'
       this.$rpc.call('speedtestapi', 'get_location', { })
         .then((response) => {
-          // console.log(response)
           this.location = JSON.parse(response.data)
         })
     },
@@ -372,7 +381,6 @@ export default {
       this.spinnerName = 'Acquiring server list...'
       this.$rpc.call('speedtestapi', 'get_servers', { })
         .then((response) => {
-          // console.log(response.data)
           this.servers = JSON.parse(response.data)
           this.filtered_servers = this.servers
         })
@@ -386,107 +394,109 @@ export default {
       this.spinnerName = 'Selecting optimal server...'
       this.$rpc.call('speedtestapi', 'find_servers', { servers })
         .then(response => {
-          // console.log(response)
-          this.$timer.start('poolServers')
+          this.$timer.start('findOptimalServers')
         })
     },
     downloadTest (server) {
       this.spinnerName = 'Measuring download speed...'
       this.$rpc.call('speedtestapi', 'test_download', { server })
         .then(response => {
-          // console.log(response)
-          this.$timer.start('poolDownload')
-          this.$timer.start('update')
+          this.$timer.start('smoothTransition')
+          this.$timer.start('getDownloadResults')
         })
     },
     uploadTest (server) {
       this.spinnerName = 'Measuring upload speed...'
       this.$rpc.call('speedtestapi', 'test_upload', { server })
         .then(response => {
-          // console.log(response)
-          this.$timer.start('poolUpload')
-          this.$timer.start('update')
+          this.$timer.start('smoothTransition')
+          this.$timer.start('getUploadResults')
         })
     },
-    poolServers () {
-      this.$rpc.call('speedtestapi', 'pool_servers', { })
+    findOptimalServers () {
+      this.$rpc.call('speedtestapi', 'find_optimal_servers', { })
         .then(response => {
           if (response.message) {
-            this.$timer.stop('poolServers')
-            this.$timer.start('poolOptimal')
-          } else {
-            // console.log(response)
+            this.$timer.stop('findOptimalServers')
+            this.$timer.start('getOptimalServer')
           }
         })
     },
     killProcesses () {
       this.$rpc.call('speedtestapi', 'kill_processes', { })
-        .then(response => {
-          console.log(response)
-        })
     },
-    poolOptimal () {
-      this.$rpc.call('speedtestapi', 'pool_optimal', { })
+    getOptimalServer () {
+      this.$rpc.call('speedtestapi', 'get_optimal', { })
         .then(response => {
-          if (response.data != null) {
-            this.$timer.stop('poolOptimal')
-            const data = JSON.parse(response.data)
-            this.optimalServer = data[0]
-            this.selectedServer = this.optimalServer.server
-            this.availableServers = this.filteredServersByCountry.filter(({ host: s1 }) => data.some(({ server: s2 }) => s2 === s1))
-            if (this.modalOptimal) {
-              this.showStatus = false
-              this.modalOptimal = false
-            }
-          } else {
-            console.log(response)
+          if (response.data == null) return
+          this.$timer.stop('getOptimalServer')
+          const data = JSON.parse(response.data)
+          this.optimalServer = data[0]
+          this.selectedServer = this.optimalServer.server
+          this.availableServers = this.filteredServersByCountry.filter(({ host: s1 }) => data.some(({ server: s2 }) => s2 === s1))
+          if (this.modalOptimal) {
+            this.showStatus = false
+            this.modalOptimal = false
           }
         })
     },
-    poolDownload () {
-      this.$rpc.call('speedtestapi', 'pool_download', { })
+    checkSameValues (name) {
+      const sameValues = Object.entries(this.sameValueCounts).filter(([_, value]) => value > 15)
+      if (sameValues.length > 4 || sameValues.some(([_, value]) => value > 50)) {
+        this.stopTests()
+        this.$message.error(`Error occured while measuring ${name} speed`, 5)
+        return true
+      }
+      return false
+    },
+    getDownloadResults () {
+      if (this.checkSameValues('download')) return
+      this.$rpc.call('speedtestapi', 'get_download_results', { })
         .then(response => {
-          if (response.data != null) {
-            // console.log(response.data)
-            if (response.data === 'done') {
-              this.spinnerName = 'Download speed measurements done!'
-              this.$timer.stop('poolDownload')
-              this.downloadFinished = true
-              return
-            } else if (response.data === 'error') {
-              this.$message.error('Could not measure download speed')
-              this.$timer.stop('poolDownload')
-              this.downloadFinished = true
-              return
-            }
-            const num = parseFloat(response.data)
-            this.speed = isNaN(num) ? this.downloadSpeed : num
-          } else {
-            console.log(response)
+          if (response.data == null) return
+          if (response.data === this.prevValue) {
+            if (this.sameValueCounts[response.data] == null) this.sameValueCounts[response.data] = 1
+            this.sameValueCounts[response.data]++
           }
+          if (response.data === 'done') {
+            this.spinnerName = 'Download speed measurements done!'
+            this.$timer.stop('getDownloadResults')
+            this.downloadFinished = true
+            return
+          } else if (response.data === 'error') {
+            this.$message.error('Could not measure download speed')
+            this.$timer.stop('getDownloadResults')
+            this.downloadFinished = true
+            return
+          }
+          const num = parseFloat(response.data)
+          this.speed = isNaN(num) ? this.downloadSpeed : num
+          this.prevValue = response.data
         })
     },
-    poolUpload () {
-      this.$rpc.call('speedtestapi', 'pool_upload', { })
+    getUploadResults () {
+      if (this.checkSameValues('upload')) return
+      this.$rpc.call('speedtestapi', 'get_upload_results', { })
         .then(response => {
-          if (response.data != null) {
-            // console.log(response.data)
-            if (response.data === 'done') {
-              this.spinnerName = 'Upload speed measurements done!'
-              this.$timer.stop('poolUpload')
-              this.uploadFinished = true
-              return
-            } else if (response.data === 'error') {
-              this.$message.error('Could not measure upload speed')
-              this.$timer.stop('poolUpload')
-              this.uploadFinished = true
-              return
-            }
-            const num = parseFloat(response.data)
-            this.speed = isNaN(num) ? this.uploadSpeed : num
-          } else {
-            console.log(response)
+          if (response.data == null) return
+          if (response.data === this.prevValue) {
+            if (this.sameValueCounts[response.data] == null) this.sameValueCounts[response.data] = 1
+            this.sameValueCounts[response.data]++
           }
+          if (response.data === 'done') {
+            this.spinnerName = 'Upload speed measurements done!'
+            this.$timer.stop('getUploadResults')
+            this.uploadFinished = true
+            return
+          } else if (response.data === 'error') {
+            this.$message.error('Could not measure upload speed')
+            this.$timer.stop('getUploadResults')
+            this.uploadFinished = true
+            return
+          }
+          const num = parseFloat(response.data)
+          this.speed = isNaN(num) ? this.uploadSpeed : num
+          this.prevValue = response.data
         })
     },
     getSystemInfo () {
@@ -507,7 +517,6 @@ export default {
     setConfigOption (config, section, option, value) {
       this.$rpc.call('speedtestapi', 'set_config_option', { config, section, option, value })
         .then(response => {
-          console.log(response)
           this.getConfigOption(config, section, option)
         })
     },
@@ -527,24 +536,22 @@ export default {
         server: this.selectedServer.split(':')[0]
       }
       axios.post(url, data)
-        .then(response => console.log(response))
+        .then(_ => {})
+        .catch(_ => console.log('Remote server is currently unavailable'))
     }
   },
   computed: {
     normalizedSpeed () {
-      if (this.speed / this.maxSpeed > 1) return 1
-      return this.speed / this.maxSpeed
+      if (this.displayedSpeed / this.maxSpeed > 1) return 1
+      return this.displayedSpeed / this.maxSpeed
     },
     filteredServersByCountry () {
       return this.servers.filter((server) => server.country === this.location.location.country.name)
     }
   },
-  created () {
-    this.checkConnection('www.google.com')
-  },
   mounted () {
     this.getConfigOption('speedtest', 'speedtest', 'share')
-    this.waitFor((_) => this.connectionStatus === 1)
+    this.waitFor((_) => this.$refs.speedGauge != null)
       .then((_) => {
         this.initMeter(this.$refs.speedGauge)
         this.getSystemInfo()
@@ -564,6 +571,7 @@ export default {
   margin-bottom: 4em;
 }
 .test-area {
+  transform: scale(1);
   margin: auto;
   width: 80em;
   height: 40em;
@@ -645,12 +653,6 @@ export default {
   margin-top: 1em;
   z-index: 1;
 }
-.zoom-in {
-  animation: 0.75s ease-out 0s 1 zoomIn forwards;
-}
-.zoom-out {
-  animation: 0.5s ease-out 0s 1 zoomOut forwards;
-}
 .blinking {
   animation: opacity 2s ease-in-out infinite;
   opacity: 1;
@@ -664,26 +666,6 @@ export default {
   }
   100% {
     opacity: 1;
-  }
-}
-@keyframes zoomIn {
-  0% {
-    transform: scale(0.25);
-    opacity: 0%;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 100%;
-  }
-}
-@keyframes zoomOut {
-  0% {
-    transform: scale(1);
-    opacity: 100%;
-  }
-  100% {
-    transform: scale(0.25);
-    opacity: 0%;
   }
 }
 @media all and (max-width: 1200px) {

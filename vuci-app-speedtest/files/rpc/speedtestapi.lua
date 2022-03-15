@@ -119,28 +119,21 @@ function M.kill_processes()
     return { message = "Processes killed", data = processes}
 end
 
-function Pool(filename, last_line)
+function Get_Results(filename)
     local file = io.open(filename, "r")
     if file == nil then
         return { message = "File is not yet created"}
     end
-    local size = file:seek("end")
     io.close(file)
-    if size == 0 then
-        return { message = "File is empty" }
-    end
     local lines = {}
     for line in io.lines(filename) do
         lines[#lines + 1] = line
     end
-    if last_line then
-        return { data = lines[#lines] }
-    end
 
-    return { data = lines }
+    return { data = lines[#lines] }
 end
 
-function M.pool_servers()
+function M.find_optimal_servers()
     local results_filename = "/tmp/results"
     local results_file = io.open(results_filename, "r")
     if results_file == nil then
@@ -157,7 +150,7 @@ function M.pool_servers()
     return { message = false }
 end
 
-function M.pool_optimal()
+function M.get_optimal()
     local optimal_filename = "/tmp/optimal"
     local optimal_file = io.open(optimal_filename, "r")
     if optimal_file ~= nil then
@@ -171,12 +164,12 @@ function M.pool_optimal()
     return { message = "Pooling optimal servers" }
 end
 
-function M.pool_download()
-    return Pool("/tmp/download_results", true)
+function M.get_download_results()
+    return Get_Results("/tmp/download_results")
 end
 
-function M.pool_upload()
-    return Pool("/tmp/upload_results", true)
+function M.get_upload_results()
+    return Get_Results("/tmp/upload_results")
 end
 
 return M

@@ -223,23 +223,21 @@ function Measure_download()
         print("Please provide a server for download speed test using -s <server> option")
         return
     end
-    local download_file = io.open("/tmp/download_results", "w")
     local null_file = io.open("/dev/null", "w")
     local url = args.server .. "/download?size=" .. SIZE * 1000000
     local c = cURL.easy{
         url = url,
         port = 8080,
         useragent = AGENT,
-        ssl_verifypeer = false,
-        ssl_verifyhost = false,
         writefunction = null_file
     }
     if not args.quiet then
         print(string.format("\r%-35s %-10s %-12s %-12s %-10s", "Server", "Total(MB)", "Now(MB)", "Percent(%)", "Speed, Mbps"))
     end
     local start_time = socket.gettime()
-    local downloaded_size_mb, end_time, total_time, download_speed, total_size_mb, percent_downloaded, prev_size, same_value_count = 0, 0, 0, 0, 0, 0, 0, 0
+    local downloaded_size_mb, end_time, total_time, download_speed, total_size_mb, percent_downloaded, prev_size, same_value_count, download_file = 0, 0, 0, 0, 0, 0, 0, 0, 0
     c:setopt_progressfunction(function(dltotal, dlnow)
+        download_file = io.open("/tmp/download_results", "w")
         if same_value_count > MAX_RETRIES then
             print('\ntest unsuccessful!')
             download_file:write("error\n")
@@ -266,10 +264,12 @@ function Measure_download()
             percent_downloaded = math.floor((dlnow / dltotal * 100) * 100) / 100
             io.write(string.format("\r%-35s %-10s %-12s %-12s %-10s", args.server, total_size_mb, downloaded_size_mb, percent_downloaded, download_speed))
         end
+        io.close(download_file)
         prev_size = downloaded_size_mb
     end)
     c:setopt(cURL.OPT_NOPROGRESS, false)
     local status, error = pcall(function() c:perform() end)
+    download_file = io.open("/tmp/download_results", "w")
     if error == "[CURL-EASY][PARTIAL_FILE] Error (18)" then
         print('\ntest finished!')
         download_file:write("done\n")
@@ -288,7 +288,6 @@ function Measure_upload()
         return
     end
     local null_file = io.open("/dev/null", "w")
-    local upload_file = io.open("/tmp/upload_results", "w")
     local url = args.server .. "/upload"
     local c = cURL.easy{
         url = url,
@@ -308,8 +307,9 @@ function Measure_upload()
         print(string.format("\r%-35s %-10s %-12s %-12s %-10s", "Server", "Total(MB)", "Now(MB)", "Percent(%)", "Speed, Mbps"))
     end
     local start_time = socket.gettime()
-    local uploaded_size_mb, end_time, total_time, upload_speed, total_size_mb, percent_uploaded, prev_size, same_value_count = 0, 0, 0, 0, 0, 0, 0, 0
+    local uploaded_size_mb, end_time, total_time, upload_speed, total_size_mb, percent_uploaded, prev_size, same_value_count, upload_file = 0, 0, 0, 0, 0, 0, 0, 0, 0
     c:setopt_progressfunction(function(_, _, ultotal, ulnow)
+        upload_file = io.open("/tmp/upload_results", "w")
         if same_value_count > MAX_RETRIES then
             print('\ntest unsuccessful!')
             upload_file:write("error\n")
@@ -336,10 +336,12 @@ function Measure_upload()
             percent_uploaded = math.floor((ulnow / ultotal * 100) * 100) / 100
             io.write(string.format("\r%-35s %-10s %-12s %-12s %-10s", args.server, total_size_mb, uploaded_size_mb, percent_uploaded, upload_speed))
         end
+        io.close(upload_file)
         prev_size = uploaded_size_mb
     end)
     c:setopt(cURL.OPT_NOPROGRESS, false)
     local status = pcall(function() c:perform() end)
+    local upload_file = io.open("/tmp/upload_results", "w")
     if status then
         print('\ntest finished!')
         upload_file:write("done\n")

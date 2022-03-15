@@ -3,7 +3,7 @@
     <a-button size="large" :loading="showStatus" @click="showModal">
       SELECT SERVER
     </a-button>
-    <a-modal v-model="visible" title="Server list" :width="900" :footer="null" centered>
+    <a-modal v-model="visible" title="Server list" :width="900" :footer="null" @cancel="clicked=false" centered>
       <div class="search-box">
         <a-space>
           <a-input-search placeholder="Search" style="width: 300px" @input="$emit('search', $event.target.value)"/>
@@ -12,7 +12,7 @@
           </a-button>
         </a-space>
       </div>
-      <a-table :columns="columns" :data-source="servers" rowKey="id" :customRow="handleClick"/>
+      <a-table :columns="columns" :data-source="servers" :row-key="record => record.id" :customRow="handleClick"/>
     </a-modal>
   </div>
 </template>
@@ -42,18 +42,20 @@ export default {
   data () {
     return {
       columns,
-      visible: false
+      visible: false,
+      clicked: false
+    }
+  },
+  watch: {
+    servers: function () {
+      if (this.clicked) this.visible = true
     }
   },
   methods: {
     showModal () {
-      if (this.servers.length === 0) {
-        this.$emit('getServers')
-        this.waitFor((_) => this.servers.length !== 0)
-          .then((_) => (this.visible = true))
-        return
-      }
-      this.visible = true
+      this.clicked = true
+      if (this.servers.length === 0) this.$emit('getServers')
+      else this.visible = true
     },
     handleClick (record) {
       return {
@@ -61,6 +63,7 @@ export default {
           click: event => {
             this.$emit('serverSelected', record)
             this.visible = false
+            this.clicked = false
           }
         }
       }
@@ -68,13 +71,7 @@ export default {
     getOptimal () {
       this.$emit('getOptimal')
       this.visible = false
-    },
-    waitFor (conditionFunction) {
-      const poll = (resolve) => {
-        if (conditionFunction()) resolve()
-        else setTimeout((_) => poll(resolve), 400)
-      }
-      return new Promise(poll)
+      this.clicked = false
     }
   }
 }
